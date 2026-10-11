@@ -31,6 +31,7 @@ interface LeftPanelProps {
   mediaStream?: MediaStream | null;
   setMediaStream?: (stream: MediaStream | null) => void;
   onSpeechComplete?: (audioBlob: Blob) => void;
+  onLiveTranscript?: (interimText: string) => void;
   isProcessingSpeech?: boolean;
 }
 
@@ -46,6 +47,7 @@ export default function LeftPanel({
   mediaStream = null,
   setMediaStream,
   onSpeechComplete,
+  onLiveTranscript,
   isProcessingSpeech = false,
 }: LeftPanelProps) {
   const [candidateCamOn, setCandidateCamOn] = useState(true);
@@ -63,6 +65,9 @@ export default function LeftPanel({
   const animFrameRef = useRef<number | null>(null);
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isRecordingSpeechRef = useRef<boolean>(false);
+  // Ref for browser live speech recognition
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
 
   // Trigger AI speech response
   const triggerAiSpeech = useCallback((durationMs = 4500) => {
@@ -179,6 +184,38 @@ export default function LeftPanel({
           // Start reading audio frequency
           startAudioAnalysis();
         }
+
+        // Initialize browser live SpeechRecognition for zero-latency streaming subtitles
+        if (typeof window !== "undefined") {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const SpeechRecognitionClass =
+            (window as unknown as { SpeechRecognition?: any }).SpeechRecognition ||
+            (window as unknown as { webkitSpeechRecognition?: any }).webkitSpeechRecognition;
+
+          if (SpeechRecognitionClass) {
+            try {
+              const recognition = new SpeechRecognitionClass();
+              recognition.continuous = true;
+              recognition.interimResults = true;
+              recognition.lang = "hi-IN"; // Supports Indic, Hinglish & English
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              recognition.onresult = (event: any) => {
+                let fullTranscript = "";
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                  fullTranscript += event.results[i][0].transcript;
+                }
+                if (fullTranscript.trim() && onLiveTranscript) {
+                  onLiveTranscript(fullTranscript.trim());
+                }
+              };
+              recognition.onerror = () => {};
+              recognition.start();
+              recognitionRef.current = recognition;
+            } catch (recErr) {
+              console.debug("Live SpeechRecognition started with notice:", recErr);
+            }
+          }
+        }
       }
     } catch (err) {
       console.warn("Microphone access could not be initialized or was dismissed:", err);
@@ -267,6 +304,11 @@ export default function LeftPanel({
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch {}
+      }
       if (audioContextRef.current && audioContextRef.current.state !== "closed") {
         audioContextRef.current.close().catch(() => {});
       }

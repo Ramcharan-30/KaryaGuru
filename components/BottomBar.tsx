@@ -51,8 +51,8 @@ export default function BottomBar({
 
   return (
     <footer className="w-full h-[10vh] bg-[#0a0c13] border-t border-[#1d2232] px-6 flex items-center justify-between select-none relative z-20 shrink-0">
-      {/* LEFT SECTION: Real-time Subtitles (Candidate vs AI Agent) */}
-      <div className="w-[38%] flex items-center gap-3 pr-4 border-r border-[#1a1f30]">
+      {/* LEFT SECTION: Real-time Live Subtitles (Candidate vs AI Agent) */}
+      <div className="w-[42%] flex items-center gap-3 pr-4 border-r border-[#1a1f30]">
         <div className="h-9 w-9 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shrink-0">
           {isProcessingSpeech ? (
             <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
@@ -72,12 +72,12 @@ export default function BottomBar({
             {isProcessingSpeech ? (
               <span className="text-[10px] font-mono font-semibold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-                [Sarvam STT &amp; AI Processing...]
+                [Sarvam AI • Evaluating Logic...]
               </span>
             ) : activeSpeaker === "user" ? (
               <span className="text-[10px] font-mono font-semibold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                [Candidate • Live Transcribed Speech]
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                [Candidate • Live Speech Active]
               </span>
             ) : (
               <span className="text-[10px] font-mono font-semibold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
@@ -87,14 +87,22 @@ export default function BottomBar({
             )}
           </div>
 
-          <p className="text-xs text-slate-200 truncate font-sans tracking-wide leading-tight mt-0.5">
-            {isProcessingSpeech
-              ? "Transcribing audio via Sarvam Saaras V4 and consulting agent orchestrator..."
-              : activeSpeaker === "user"
-              ? userSubtitle
-                ? `“${userSubtitle}”`
-                : "“Awaiting candidate voice input...”"
-              : `“${aiSubtitle}”`}
+          <p className="text-xs text-slate-200 line-clamp-2 font-sans tracking-wide leading-snug mt-0.5">
+            {isProcessingSpeech ? (
+              <span className="text-amber-300/90 italic">
+                Transcribing audio via Sarvam Saaras V4 and consulting agent orchestrator...
+              </span>
+            ) : activeSpeaker === "user" ? (
+              userSubtitle ? (
+                <span>
+                  “{userSubtitle}”<span className="inline-block w-1.5 h-3 ml-1 bg-emerald-400 animate-pulse align-middle" />
+                </span>
+              ) : (
+                <span className="text-slate-400 italic">“Speak into your microphone to explain your approach...”</span>
+              )
+            ) : (
+              `“${aiSubtitle}”`
+            )}
           </p>
         </div>
       </div>
