@@ -44,6 +44,72 @@ export default function InterviewPage() {
     });
   }, [mediaStream]);
 
+  // Prompt guides per interview stage
+  const STAGE_OPENING_PROMPTS: Record<InterviewStage, { text: string; persona: string }> = {
+    DSA_1: {
+      text: "Welcome to DSA Level 1. Please explain your approach for implementing the LRU Cache with O(1) operations and millisecond TTL expiration.",
+      persona: "Junior Mentor",
+    },
+    DSA_2: {
+      text: "Welcome to DSA Level 2. Walk me through your design for the Token Bucket rate limiter and how you plan to ensure thread safety without race conditions.",
+      persona: "Systems Reviewer",
+    },
+    SYS_DESIGN: {
+      text: "Welcome to System Design. On the whiteboard canvas, please architect a global distributed caching tier handling 500k QPS and address cache stampede mitigation.",
+      persona: "Lead Architect",
+    },
+  };
+
+  const STAGE_HINTS: Record<InterviewStage, string[]> = {
+    DSA_1: [
+      "Consider using sentinel dummy head and tail nodes to avoid null pointer checks when moving nodes in O(1).",
+      "How will your cache evict expired items if no get() call is made for a long duration?",
+      "Ensure put() updates the existing node value and refreshes both recency and TTL timestamp.",
+    ],
+    DSA_2: [
+      "Instead of a background worker thread, can you compute refilled tokens based on the elapsed time delta since last check?",
+      "What synchronization primitive will you use to prevent multiple worker threads from over-consuming tokens simultaneously?",
+      "How will you optimize lock contention if 10,000 threads invoke allow_request() within the same millisecond?",
+    ],
+    SYS_DESIGN: [
+      "Diagram how consistent hashing with virtual nodes ensures even key distribution across cache nodes.",
+      "Consider probabilistic early expiration (XFetch) or mutex leases to prevent the thundering herd problem.",
+      "How would you handle asynchronous write-behind persistence to the underlying database without data loss?",
+    ],
+  };
+
+  // Sync opening prompt & persona when stage changes
+  useEffect(() => {
+    const config = STAGE_OPENING_PROMPTS[interviewStage];
+    if (config) {
+      setAiSubtitle(config.text);
+      setPersona(config.persona);
+      setActiveSpeaker("ai");
+    }
+  }, [interviewStage]);
+
+  // Voice playback with Web Speech API fallback
+  const speakText = useCallback((textToSpeak: string) => {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      try {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(textToSpeak);
+        utterance.lang = "hi-IN";
+        utterance.rate = 1.0;
+        utterance.onstart = () => setIsAiSpeaking(true);
+        utterance.onend = () => setIsAiSpeaking(false);
+        utterance.onerror = () => setIsAiSpeaking(false);
+        window.speechSynthesis.speak(utterance);
+      } catch {
+        setIsAiSpeaking(true);
+        setTimeout(() => setIsAiSpeaking(false), 3500);
+      }
+    } else {
+      setIsAiSpeaking(true);
+      setTimeout(() => setIsAiSpeaking(false), 3500);
+    }
+  }, []);
+
   // Complete Interview Voice Loop
   const handleSpeechComplete = useCallback(
     async (audioBlob: Blob) => {
@@ -133,38 +199,37 @@ export default function InterviewPage() {
             currentAudioRef.current = null;
           }
 
-          // STEP 6: Play returned TTS audio automatically using HTMLAudioElement
-          const audioUrl = URL.createObjectURL(audioBufferBlob);
-          const audio = new Audio(audioUrl);
-          currentAudioRef.current = audio;
+          if (audioBufferBlob.size > 200) {
+            // STEP 6: Play returned TTS audio automatically using HTMLAudioElement
+            const audioUrl = URL.createObjectURL(audioBufferBlob);
+            const audio = new Audio(audioUrl);
+            currentAudioRef.current = audio;
 
-          // Set isAiSpeaking to true while it plays
-          audio.onplay = () => {
-            setIsAiSpeaking(true);
-          };
+            audio.onplay = () => {
+              setIsAiSpeaking(true);
+            };
 
-          audio.onended = () => {
-            setIsAiSpeaking(false);
-            URL.revokeObjectURL(audioUrl);
-          };
-
-          audio.onerror = () => {
-            setIsAiSpeaking(false);
-          };
-
-          try {
-            await audio.play();
-          } catch (playErr) {
-            console.warn("Autoplay blocked or silent fallback; simulating speech pulse:", playErr);
-            setIsAiSpeaking(true);
-            setTimeout(() => {
+            audio.onended = () => {
               setIsAiSpeaking(false);
-            }, 3500);
+              URL.revokeObjectURL(audioUrl);
+            };
+
+            audio.onerror = () => {
+              setIsAiSpeaking(false);
+              speakText(responseText);
+            };
+
+            try {
+              await audio.play();
+            } catch (playErr) {
+              console.warn("Autoplay blocked or silent fallback; using speech synthesis:", playErr);
+              speakText(responseText);
+            }
+          } else {
+            speakText(responseText);
           }
         } else {
-          // Fallback speaking animation pulse
-          setIsAiSpeaking(true);
-          setTimeout(() => setIsAiSpeaking(false), 3500);
+          speakText(responseText);
         }
       } catch (err) {
         console.error("Error in speech processing loop:", err);
@@ -172,8 +237,17 @@ export default function InterviewPage() {
         setIsProcessingSpeech(false);
       }
     },
-    [interviewStage, currentCode, isProcessingSpeech]
+    [interviewStage, currentCode, isProcessingSpeech, speakText]
   );
+
+  // Cycle hints / prompt questions on subtitle click
+  const handleCycleSubtitle = useCallback(() => {
+    const hints = STAGE_HINTS[interviewStage];
+    if (!hints || hints.length === 0) return;
+    const nextHint = hints[Math.floor(Math.random() * hints.length)];
+    setAiSubtitle(nextHint);
+    setActiveSpeaker("ai");
+  }, [interviewStage]);
 
   // Manual trigger for push-to-talk mechanic
   const handleTriggerPushToTalk = useCallback(() => {
@@ -254,6 +328,7 @@ export default function InterviewPage() {
         aiSubtitle={aiSubtitle}
         isProcessingSpeech={isProcessingSpeech}
         onTriggerProcessSpeech={handleTriggerPushToTalk}
+        onCycleSubtitle={handleCycleSubtitle}
         interviewStage={interviewStage}
         onStageChange={setInterviewStage}
         persona={persona}

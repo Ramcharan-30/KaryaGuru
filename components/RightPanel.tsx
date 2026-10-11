@@ -882,15 +882,32 @@ export default function RightPanel({
                   {/* Active Test Case Detail View */}
                   <div className="flex-1 p-3.5 font-mono text-xs flex items-center justify-between gap-6 overflow-hidden">
                     {testExecutionState === "idle" ? (
-                      <div className="flex items-center gap-2.5 text-slate-400">
-                        <Info className="w-4 h-4 text-cyan-400 shrink-0" />
-                        <div>
-                          <p className="text-slate-300 font-medium font-sans">Tests have not been run yet.</p>
-                          <p className="text-[11px] text-slate-500">
-                            Write your code in the editor above and click <strong className="text-cyan-300 font-mono">Run Code</strong> to validate against test cases.
-                          </p>
-                        </div>
-                      </div>
+                      (() => {
+                        const activeTest = testResults.find((t) => t.id === activeTestTab) || testResults[0];
+                        return (
+                          <div className="flex-1 space-y-1.5 text-slate-300 overflow-hidden">
+                            <div className="flex items-center gap-2">
+                              <span className="flex items-center gap-1.5 text-slate-300 font-semibold">
+                                <Clock className="w-3.5 h-3.5 text-cyan-400" />
+                                <span>{activeTest.name}</span>
+                              </span>
+                              <span className="text-[10px] text-cyan-400 bg-cyan-950/50 border border-cyan-800/40 px-2 py-0.5 rounded font-mono">
+                                Pending Execution
+                              </span>
+                            </div>
+
+                            <div className="text-slate-400 text-[11px] truncate">
+                              Input: <code className="text-cyan-300">{activeTest.input}</code>
+                            </div>
+
+                            <div className="text-[11px]">
+                              Expected: <span className="text-slate-200">{activeTest.expected}</span>
+                              <span className="mx-2 text-slate-600">|</span>
+                              Actual Output: <span className="text-slate-500 italic">Not run yet (Click &quot;Run Code&quot;)</span>
+                            </div>
+                          </div>
+                        );
+                      })()
                     ) : (
                       (() => {
                         const activeTest = testResults.find((t) => t.id === activeTestTab) || testResults[0];
