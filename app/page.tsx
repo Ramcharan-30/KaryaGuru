@@ -230,6 +230,10 @@ export default function InterviewPage() {
           mediaStream={mediaStream}
           setMediaStream={setMediaStream}
           onSpeechComplete={handleSpeechComplete}
+          onLiveTranscript={(liveText) => {
+            setUserSubtitle(liveText);
+            setActiveSpeaker("user");
+          }}
           isProcessingSpeech={isProcessingSpeech}
         />
 

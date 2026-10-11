@@ -201,14 +201,23 @@ export default function LeftPanel({
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               recognition.onresult = (event: any) => {
                 let fullTranscript = "";
-                for (let i = event.resultIndex; i < event.results.length; i++) {
+                for (let i = 0; i < event.results.length; i++) {
                   fullTranscript += event.results[i][0].transcript;
                 }
                 if (fullTranscript.trim() && onLiveTranscript) {
                   onLiveTranscript(fullTranscript.trim());
                 }
               };
-              recognition.onerror = () => {};
+              recognition.onerror = (e: any) => {
+                console.debug("Live speech recognition event:", e);
+              };
+              recognition.onend = () => {
+                if (recognitionRef.current && isRecordingSpeechRef.current) {
+                  try {
+                    recognition.start();
+                  } catch {}
+                }
+              };
               recognition.start();
               recognitionRef.current = recognition;
             } catch (recErr) {

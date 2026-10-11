@@ -321,7 +321,7 @@ export default function RightPanel({
     error?: string;
   }
 
-  const [testResults, setTestResults] = useState<TestCaseResult[]>([
+  const IDLE_TESTS_DSA_1: TestCaseResult[] = [
     {
       id: "test1",
       name: "Case 1 (Basic Operations)",
@@ -349,7 +349,39 @@ export default function RightPanel({
       expected: "-1 (Evicted LRU)",
       actual: "--",
     },
-  ]);
+  ];
+
+  const IDLE_TESTS_DSA_2: TestCaseResult[] = [
+    {
+      id: "test1",
+      name: "Case 1 (Bucket Consumption)",
+      passed: false,
+      runtime: "--",
+      input: "limiter = DistributedRateLimiter(5, 1.0); limiter.allow_request(5)",
+      expected: "True",
+      actual: "--",
+    },
+    {
+      id: "test2",
+      name: "Case 2 (Burst Limit)",
+      passed: false,
+      runtime: "--",
+      input: "Immediate allow_request(1) beyond capacity",
+      expected: "False",
+      actual: "--",
+    },
+    {
+      id: "test3",
+      name: "Case 3 (Concurrency)",
+      passed: false,
+      runtime: "--",
+      input: "1,000 concurrent threads with lock synchronization",
+      expected: "0 Race Conditions",
+      actual: "--",
+    },
+  ];
+
+  const [testResults, setTestResults] = useState<TestCaseResult[]>(IDLE_TESTS_DSA_1);
 
   const currentCode = stageCodes[interviewStage]?.[language] || "";
   const currentProblem = PROBLEMS[interviewStage];
@@ -359,9 +391,14 @@ export default function RightPanel({
     onCodeChange?.(currentCode);
   }, [currentCode, onCodeChange]);
 
-  // Reset test execution state when stage or language changes
+  // Reset test execution state and test cases when stage or language changes
   useEffect(() => {
     setTestExecutionState("idle");
+    if (interviewStage === "DSA_2") {
+      setTestResults(IDLE_TESTS_DSA_2);
+    } else {
+      setTestResults(IDLE_TESTS_DSA_1);
+    }
   }, [interviewStage, language]);
 
   const setCurrentCode = (val: string) => {
