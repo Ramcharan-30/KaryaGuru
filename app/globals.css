@@ -1,26 +1,109 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #090a0f;
+  --foreground: #f1f5f9;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+*, *::before, *::after {
+  box-sizing: border-box;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+*::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+}
+
+html,
+body {
+  height: 100vh;
+  width: 100vw;
+  margin: 0;
+  padding: 0;
+  overflow: hidden !important;
+  background-color: #08090e;
+  color: #f1f5f9;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom visualizer & glowing keyframe animations */
+@keyframes soundwave {
+  0%, 100% {
+    height: 15%;
+    opacity: 0.5;
+  }
+  50% {
+    height: 90%;
+    opacity: 1;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(99, 102, 241, 0.25), 0 0 35px rgba(168, 85, 247, 0.15);
+    border-color: rgba(99, 102, 241, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(99, 102, 241, 0.45), 0 0 50px rgba(168, 85, 247, 0.3);
+    border-color: rgba(147, 51, 234, 0.6);
+  }
+}
+
+@keyframes rippleOrb {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
+}
+
+@keyframes radarPing {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 3s ease-in-out infinite;
+}
+
+.animate-ripple-orb {
+  animation: rippleOrb 4s ease-in-out infinite;
+}
+
+.animate-radar-ping {
+  animation: radarPing 2.5s cubic-bezier(0, 0.2, 0.8, 1) infinite;
+}
+
+/* Hide scrollbar classes */
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+.no-scrollbar {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
 }
