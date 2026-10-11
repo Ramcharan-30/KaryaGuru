@@ -313,7 +313,7 @@ export default function LeftPanel({
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="font-bold tracking-tight text-white text-sm">micro1</span>
+              <span className="font-bold tracking-tight text-white text-sm">Karya Guru</span>
               <span className="text-[10px] uppercase font-semibold tracking-wider px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
                 AI Interview
               </span>
@@ -411,7 +411,7 @@ export default function LeftPanel({
             Elena Rostova, Ph.D.
             <Shield className="w-3.5 h-3.5 text-indigo-400" />
           </h2>
-          <p className="text-[11px] text-slate-400">Principal Systems Evaluator • Micro1</p>
+          <p className="text-[11px] text-slate-400">Principal Systems Evaluator • AI Assessment</p>
         </div>
 
         {/* REAL-TIME AUDIO FREQUENCY MATRIX */}

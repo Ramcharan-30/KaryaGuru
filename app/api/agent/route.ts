@@ -2,17 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 /**
  * Sarvam AI Interviewer Agent Orchestrator API Route
- * Official Schema Reference: https://docs.sarvam.ai/api-reference/chat/chat-completions-v1
- * Endpoint: POST https://api.sarvam.ai/v1/chat/completions
- * Model: sarvam-105b (128K context Indic flagship model)
- * Authentication: api-subscription-key header
+ * Integrates live LLM calls (Sarvam 105B Conversations / Generic wrapper)
+ * Evaluates logic in Hinglish and outputs { responseText, nextStage }
  */
-
-export interface AgentRequest {
-  transcript: string;
-  interviewStage: "DSA_1" | "DSA_2" | "SYS_DESIGN";
-  code?: string;
-}
 
 export interface AgentResponse {
   responseText: string;
@@ -29,197 +21,229 @@ export interface AgentResponse {
   };
 }
 
+// Helper to safely extract JSON from LLM response (handling markdown code blocks or raw text)
+function parseLlmJsonOutput(rawText: string): { responseText?: string; nextStage?: string } | null {
+  if (!rawText) return null;
+  const cleaned = rawText
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
+
+  // Try direct parse
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (parsed && typeof parsed === "object") return parsed;
+  } catch {
+    // Try regex extraction of first {...}
+  }
+
+  const match = cleaned.match(/\{[\s\S]*\}/);
+  if (match) {
+    try {
+      const parsed = JSON.parse(match[0]);
+      if (parsed && typeof parsed === "object") return parsed;
+    } catch {
+      // Ignored
+    }
+  }
+
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
-    const transcript = (body.transcript || body.text || "").trim();
+    const transcribedText = (body.transcript || body.text || "").trim();
     const interviewStage: "DSA_1" | "DSA_2" | "SYS_DESIGN" =
       body.interviewStage || "DSA_1";
     const code = body.code || "";
 
-    const lowerTranscript = transcript.toLowerCase();
+    // Determine the progression target
+    const nextStageIfCorrect =
+      interviewStage === "DSA_1"
+        ? "DSA_2"
+        : interviewStage === "DSA_2"
+        ? "SYS_DESIGN"
+        : "SYS_DESIGN";
 
-    let systemPrompt = "";
-    let persona = "";
-    let fallbackResponseText = "";
+    // System prompt exactly matching requested template
+    const systemPrompt = `You are an expert technical interviewer. The user is currently at the ${interviewStage} level. The user just said: ${transcribedText}. Evaluate their logic. Respond in a mix of Hindi and English (Hinglish) in under 3 sentences. If they are correct, output a JSON object containing { responseText: "...", nextStage: "${nextStageIfCorrect}" }. If they are struggling, output { responseText: "...", nextStage: "${interviewStage}" }. Return ONLY the JSON object.`;
+
+    let responseText = "";
     let nextStage: "DSA_1" | "DSA_2" | "SYS_DESIGN" = interviewStage;
-    let shouldIncrementStage = false;
+    let modelUsed = "local_heuristic";
 
-    // Engineered Persona & System Prompt switch
-    switch (interviewStage) {
-      case "DSA_1": {
-        persona = "Friendly Junior Mentor";
-        systemPrompt =
-          "You are Elena, a friendly and encouraging junior engineering mentor evaluating DSA Level 1 (LRU Cache & Array/Pointer Logic). " +
-          "Your tone is supportive, warm, and constructive. You verify basic pointer arithmetic, sentinel nodes, and O(1) operations. " +
-          "If the candidate explains the logic well or asks to move forward, celebrate their progress and issue an increment command to advance to DSA_2.";
+    const sarvamApiKey = process.env.SARVAM_API_KEY?.trim();
+    const openaiApiKey = process.env.OPENAI_API_KEY?.trim();
+    const geminiApiKey = process.env.GEMINI_API_KEY?.trim();
 
-        const hasPassedOrReady =
-          lowerTranscript.includes("next") ||
-          lowerTranscript.includes("done") ||
-          lowerTranscript.includes("pass") ||
-          lowerTranscript.includes("ready") ||
-          lowerTranscript.includes("complete") ||
-          lowerTranscript.includes("sentinel") ||
-          code.includes("class DistributedLRUCache") ||
-          code.includes("def put");
-
-        if (hasPassedOrReady && transcript.length > 0) {
-          fallbackResponseText =
-            "Awesome work! You handled the sentinel nodes and the O(1) doubly linked list eviction really smoothly. " +
-            "Your edge case handling for TTL looks great. Let's level up! Advancing you to DSA Level 2: Concurrency & Rate Limiting.";
-          nextStage = "DSA_2";
-          shouldIncrementStage = true;
-        } else if (transcript.length > 0) {
-          fallbackResponseText =
-            "That's a great train of thought! How do the dummy head and tail sentinel nodes make your removeNode and addNode methods simpler?";
-          nextStage = "DSA_1";
-          shouldIncrementStage = false;
-        } else {
-          fallbackResponseText =
-            "Welcome to DSA Level 1! Walk me through your plan for implementing the LRU Cache with O(1) amortized get and put operations.";
-          nextStage = "DSA_1";
-          shouldIncrementStage = false;
-        }
-        break;
-      }
-
-      case "DSA_2": {
-        persona = "Senior Systems Evaluator";
-        systemPrompt =
-          "You are Elena, a Senior Systems Evaluator assessing DSA Level 2 (Concurrency, Thread-safety & Token Bucket Rate Limiting). " +
-          "Your tone is analytical, precise, and focused on race conditions, locks, and memory footprint. " +
-          "If the candidate demonstrates thread-safety under concurrent load, increment the stage to SYS_DESIGN.";
-
-        const hasPassedOrReady =
-          lowerTranscript.includes("next") ||
-          lowerTranscript.includes("whiteboard") ||
-          lowerTranscript.includes("system design") ||
-          lowerTranscript.includes("lock") ||
-          lowerTranscript.includes("thread") ||
-          code.includes("threading.Lock") ||
-          code.includes("allow_request");
-
-        if (hasPassedOrReady && transcript.length > 0) {
-          fallbackResponseText =
-            "Solid concurrency engineering. Your synchronization avoids race conditions during token replenishment. " +
-            "Let's move out of the code editor and into architecture. Advancing you to System Design!";
-          nextStage = "SYS_DESIGN";
-          shouldIncrementStage = true;
-        } else if (transcript.length > 0) {
-          fallbackResponseText =
-            "I see your token replenishment calculation. What is the lock contention overhead if 10,000 concurrent worker threads hit allow_request simultaneously?";
-          nextStage = "DSA_2";
-          shouldIncrementStage = false;
-        } else {
-          fallbackResponseText =
-            "Welcome to DSA Level 2. Please explain how you protect against token starvation under heavy concurrent bursts.";
-          nextStage = "DSA_2";
-          shouldIncrementStage = false;
-        }
-        break;
-      }
-
-      case "SYS_DESIGN": {
-        persona = "Strict Lead Architect";
-        systemPrompt =
-          "You are Elena, a strict, no-nonsense Lead Architect evaluating System Design and High-Scale Architecture. " +
-          "Your tone is demanding, rigorous, and direct. You probe single points of failure, partition tolerance, thundering herd / cache stampede, and database replication lag. " +
-          "Do not accept superficial answers.";
-
-        const mentionsScalability =
-          lowerTranscript.includes("redis") ||
-          lowerTranscript.includes("cluster") ||
-          lowerTranscript.includes("stampede") ||
-          lowerTranscript.includes("consistent hashing") ||
-          lowerTranscript.includes("kafka") ||
-          lowerTranscript.includes("replica");
-
-        if (mentionsScalability) {
-          fallbackResponseText =
-            "Good call on consistent hashing and multi-region replication. Now, how do you handle cache stampede (thundering herd) when a hot key expires during peak traffic? Walk me through mutex leases versus probabilistic early expiration.";
-          nextStage = "SYS_DESIGN";
-          shouldIncrementStage = false;
-        } else if (transcript.length > 0) {
-          fallbackResponseText =
-            "That architecture still has a bottleneck at the API gateway layer. How will you shard your cache tier if memory usage exceeds 2 Terabytes across nodes?";
-          nextStage = "SYS_DESIGN";
-          shouldIncrementStage = false;
-        } else {
-          fallbackResponseText =
-            "Welcome to the System Design phase. On the whiteboard, lay out a distributed caching tier supporting 500,000 QPS with write-behind persistence.";
-          nextStage = "SYS_DESIGN";
-          shouldIncrementStage = false;
-        }
-        break;
-      }
-
-      default: {
-        persona = "AI Evaluator";
-        systemPrompt = "Default evaluation prompt.";
-        fallbackResponseText = "This is a mock AI response.";
-        nextStage = "DSA_1";
-        shouldIncrementStage = false;
-        break;
-      }
-    }
-
-    let finalResponseText = fallbackResponseText;
-    let modelUsed = "local_engineered_prompt";
-
-    const apiKey = process.env.SARVAM_API_KEY;
-
-    // If Sarvam API key is configured, call Sarvam-105B Chat Completion API strictly matching its REST schema
-    if (apiKey && apiKey !== "your_sarvam_api_key_here" && transcript.length > 0) {
+    // 1. Try Sarvam AI LLM (sarvam-105b-conversations or sarvam-105b)
+    if (sarvamApiKey && sarvamApiKey !== "your_sarvam_api_key_here" && transcribedText.length > 0) {
       try {
-        const sarvamChatResponse = await fetch("https://api.sarvam.ai/v1/chat/completions", {
+        const sarvamRes = await fetch("https://api.sarvam.ai/v1/chat/completions", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "api-subscription-key": apiKey,
+            "api-subscription-key": sarvamApiKey,
           },
           body: JSON.stringify({
-            model: "sarvam-105b",
+            model: "sarvam-105b-conversations",
             messages: [
-              {
-                role: "system",
-                content: `${systemPrompt}\n\nCandidate is currently at stage: ${interviewStage}.\nProvide concise, direct interviewer feedback (2 to 3 sentences maximum) suitable for spoken audio. You may use natural Hinglish where appropriate.`,
-              },
+              { role: "system", content: systemPrompt },
               {
                 role: "user",
-                content: `Candidate said: "${transcript}"\nCurrent code on screen:\n\`\`\`\n${code}\n\`\`\``,
+                content: code
+                  ? `${transcribedText}\n\n[Candidate Code]:\n${code.slice(0, 500)}`
+                  : transcribedText,
               },
             ],
             temperature: 0.2,
-            max_tokens: 256,
+            max_tokens: 512,
           }),
         });
 
-        if (sarvamChatResponse.ok) {
-          const chatData = await sarvamChatResponse.json();
-          const choice = chatData.choices?.[0];
-          if (choice?.message?.content) {
-            finalResponseText = choice.message.content.trim();
-            modelUsed = "sarvam-105b";
+        if (sarvamRes.ok) {
+          const sarvamData = await sarvamRes.json();
+          const rawContent = sarvamData.choices?.[0]?.message?.content || "";
+          const parsed = parseLlmJsonOutput(rawContent);
+
+          if (parsed?.responseText) {
+            responseText = parsed.responseText.trim();
+            if (
+              parsed.nextStage === "DSA_1" ||
+              parsed.nextStage === "DSA_2" ||
+              parsed.nextStage === "SYS_DESIGN"
+            ) {
+              nextStage = parsed.nextStage;
+            }
+            modelUsed = "sarvam-105b-conversations";
           }
-        } else {
-          console.warn("Sarvam Chat Completion returned status:", sarvamChatResponse.status);
         }
-      } catch (chatError) {
-        console.warn("Failed calling Sarvam Chat Completion, using fallback logic:", chatError);
+      } catch (err) {
+        console.warn("Sarvam LLM call encountered an error:", err);
       }
     }
 
+    // 2. Optional OpenAI fallback wrapper
+    if (!responseText && openaiApiKey && transcribedText.length > 0) {
+      try {
+        const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${openaiApiKey}`,
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: transcribedText },
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.2,
+          }),
+        });
+
+        if (openaiRes.ok) {
+          const data = await openaiRes.json();
+          const rawContent = data.choices?.[0]?.message?.content || "";
+          const parsed = parseLlmJsonOutput(rawContent);
+          if (parsed?.responseText) {
+            responseText = parsed.responseText.trim();
+            if (parsed.nextStage) nextStage = parsed.nextStage as typeof nextStage;
+            modelUsed = "openai-gpt-4o-mini";
+          }
+        }
+      } catch (err) {
+        console.warn("OpenAI fallback encountered an error:", err);
+      }
+    }
+
+    // 3. Optional Gemini fallback wrapper
+    if (!responseText && geminiApiKey && transcribedText.length > 0) {
+      try {
+        const geminiRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ role: "user", parts: [{ text: `${systemPrompt}\n\nCandidate Input: ${transcribedText}` }] }],
+              generationConfig: { responseMimeType: "application/json" },
+            }),
+          }
+        );
+
+        if (geminiRes.ok) {
+          const data = await geminiRes.json();
+          const rawContent = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+          const parsed = parseLlmJsonOutput(rawContent);
+          if (parsed?.responseText) {
+            responseText = parsed.responseText.trim();
+            if (parsed.nextStage) nextStage = parsed.nextStage as typeof nextStage;
+            modelUsed = "gemini-1.5-flash";
+          }
+        }
+      } catch (err) {
+        console.warn("Gemini fallback encountered an error:", err);
+      }
+    }
+
+    // 4. Resilient Heuristic Fallback (guarantees graceful response if offline or empty input)
+    if (!responseText) {
+      const lower = transcribedText.toLowerCase();
+      const isCorrect =
+        lower.includes("sentinel") ||
+        lower.includes("hash") ||
+        lower.includes("doubly") ||
+        lower.includes("o(1)") ||
+        lower.includes("lock") ||
+        lower.includes("token") ||
+        lower.includes("redis") ||
+        lower.includes("cluster") ||
+        lower.includes("done") ||
+        lower.includes("ready") ||
+        lower.includes("pass");
+
+      if (isCorrect && transcribedText.length > 0) {
+        responseText =
+          interviewStage === "DSA_1"
+            ? "Aapka logic bilkul sahi hai! Sentinel nodes aur doubly linked list ke sath O(1) operations perfectly achieve ho rahe hain, chaliye ab agle round par move karte hain."
+            : interviewStage === "DSA_2"
+            ? "Concurrency handling aur lock synchronization bohot badhiya hai! Token replenishment race conditions avoid karta hai, advancing to System Design."
+            : "Consistent hashing aur partition replication architecture bohot solid hai. Scalability criteria meet ho chuki hai!";
+        nextStage = nextStageIfCorrect;
+      } else if (transcribedText.length > 0) {
+        responseText =
+          interviewStage === "DSA_1"
+            ? "Aapki approach achi hai par O(1) eviction ke liye doubly linked list ke pointers ko kaise update karenge? Thoda detail me explain karein."
+            : interviewStage === "DSA_2"
+            ? "High concurrent worker threads ke case me lock contention overhead kaise manage karenge? Thoda analyze karein."
+            : "Whiteboard par distributed caching tier me cache stampede handle karne ke liye kya strategy use karenge?";
+        nextStage = interviewStage;
+      } else {
+        responseText =
+          interviewStage === "DSA_1"
+            ? "Welcome to DSA Level 1! LRU Cache ke O(1) get aur put operations ke liye apna core plan explain kijiye."
+            : interviewStage === "DSA_2"
+            ? "Welcome to DSA Level 2! Rate limiting concurrency aur thread synchronization ke baare me batayein."
+            : "Welcome to System Design! Whiteboard par high-scale distributed cache architecture draw kijiye.";
+        nextStage = interviewStage;
+      }
+    }
+
+    const shouldIncrementStage = nextStage !== interviewStage;
+
     const payload: AgentResponse = {
-      responseText: finalResponseText,
+      responseText,
       nextStage,
       shouldIncrementStage,
       stageIncrementCommand: shouldIncrementStage ? "ADVANCE_STAGE" : "RETAIN_STAGE",
-      persona,
+      persona: "Elena (Expert Technical Interviewer)",
       systemPrompt,
       modelUsed,
       meta: {
-        candidateTranscriptLength: transcript.length,
+        candidateTranscriptLength: transcribedText.length,
         codeSnippetLength: code.length,
         timestamp: new Date().toISOString(),
       },
@@ -230,11 +254,10 @@ export async function POST(req: NextRequest) {
     console.error("Error in /api/agent route:", error);
     return NextResponse.json(
       {
-        error: "Internal server error in AI agent route",
-        responseText: "This is a mock AI response",
+        responseText: "Kuch technical issue hua, kripya apna point dobara explain karein.",
         nextStage: "DSA_1",
         shouldIncrementStage: false,
-        message: error instanceof Error ? error.message : String(error),
+        error: error instanceof Error ? error.message : String(error),
       },
       { status: 500 }
     );

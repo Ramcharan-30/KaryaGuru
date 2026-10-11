@@ -8,8 +8,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Micro1 AI Technical Interview | Live Assessment",
-  description: "High-fidelity AI technical interview environment with real-time audio and interactive workspace",
+  title: "Karya Guru | AI Technical Interview & Live Assessment",
+  description: "Next-generation live AI technical interviewer layout built with Monaco Editor, Excalidraw, and Sarvam AI.",
 };
 
 export default function RootLayout({
