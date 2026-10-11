@@ -50,16 +50,16 @@ export async function POST(req: NextRequest) {
 
     // Prepare multipart form data payload strictly matching Sarvam API specification
     const outgoingFormData = new FormData();
-    const filename = (audioFile as File).name || "speech.wav";
+    const filename = (audioFile as File).name || "speech.webm";
     outgoingFormData.append("file", audioFile, filename);
-    outgoingFormData.append("model", model);
+    outgoingFormData.append("model", model || "saaras:v4");
 
     if (languageCode) {
       outgoingFormData.append("language_code", languageCode);
     }
 
     // 'mode' is strictly applicable when using saaras:v3, or when explicitly requested
-    if (mode) {
+    if (mode && model === "saaras:v3") {
       outgoingFormData.append("mode", mode);
     }
 
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
     const sarvamResponse = await fetch("https://api.sarvam.ai/speech-to-text", {
       method: "POST",
       headers: {
-        "api-subscription-key": apiKey,
+        "api-subscription-key": apiKey.trim(),
       },
       body: outgoingFormData,
     });

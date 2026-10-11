@@ -82,7 +82,7 @@ export default function LeftPanel({
     } else {
       // Fallback: If no hardware recorder or mock environment, generate empty or dummy blob
       if (onSpeechComplete) {
-        const dummyBlob = new Blob(["mock-speech-audio"], { type: "audio/webm" });
+        const dummyBlob = new Blob(["mock-speech-audio"], { type: "audio/webm;codecs=opus" });
         onSpeechComplete(dummyBlob);
       }
     }
@@ -93,13 +93,21 @@ export default function LeftPanel({
     if (!mediaStream) return;
 
     try {
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm")
-        ? "audio/webm"
-        : MediaRecorder.isTypeSupported("audio/ogg")
-        ? "audio/ogg"
-        : "audio/wav";
+      const preferredMime = "audio/webm;codecs=opus";
+      let options: MediaRecorderOptions = { mimeType: preferredMime };
 
-      const recorder = new MediaRecorder(mediaStream, { mimeType });
+      if (
+        typeof MediaRecorder.isTypeSupported === "function" &&
+        !MediaRecorder.isTypeSupported(preferredMime)
+      ) {
+        if (MediaRecorder.isTypeSupported("audio/webm")) {
+          options = { mimeType: "audio/webm" };
+        } else {
+          options = {};
+        }
+      }
+
+      const recorder = new MediaRecorder(mediaStream, options);
       recorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) {
           audioChunksRef.current.push(e.data);
@@ -107,7 +115,9 @@ export default function LeftPanel({
       };
 
       recorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        const blob = new Blob(audioChunksRef.current, {
+          type: recorder.mimeType || "audio/webm;codecs=opus",
+        });
         audioChunksRef.current = [];
         if (onSpeechComplete) {
           onSpeechComplete(blob);
